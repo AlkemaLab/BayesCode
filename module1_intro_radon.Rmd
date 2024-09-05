@@ -1,0 +1,59 @@
+---
+title: "Applied Bayesian Modeling - module 3"
+author: "Leontine Alkema"
+date: "September 5, 2024"
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    number_sections: true
+---
+
+R code and output to reproduce results in the slides
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(brms)
+```
+
+# Radon data
+
+The radon_data.Rmd file contains the code to read in the data and process it. We just work with the clean data here 
+
+```{r}
+dat0 <- read_csv(here::here("data/radon.csv"))
+```
+
+data for regression
+```{r}
+dat <- dat0 %>%
+  mutate(y = log(activity), x_ura = log(ura_county) - mean(log(ura_county)))
+```
+
+frequentist/tradtional
+```{r}
+dat %>%
+  lm(y ~ floor + x_ura, data = .) %>%
+  broom::tidy(conf.int = TRUE, conf.level = 0.95) %>%
+  select(-statistic, -p.value) #%>%
+#  knitr::kable(format = "latex", digits = 2)
+
+```
+
+Bayesian regression 
+```{r}
+fit <- 
+  dat %>%
+ brm(y ~ floor + x_ura, family = gaussian(), data = .,
+             # we will discuss these arguments later in the course
+           chains = 4,
+          iter = 2000,
+          thin = 1,
+          cores = getOption("mc.cores", 4),)
+```
+
+
+```{r}
+summary(fit) 
+```
