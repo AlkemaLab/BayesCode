@@ -1,0 +1,184 @@
+---
+title: "Applied Bayesian Modeling - module 6"
+author: "Leontine Alkema"
+date: "September 17, 2022"
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    number_sections: true
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(brms)
+library(posterior)
+library(tidybayes)
+```
+
+# Radon data 
+
+The radon_data.Rmd file contains the code to read in the data and process it. We just work with the clean data here 
+
+```{r}
+dat0 <- read_csv(here::here("data/radon.csv"))
+```
+
+data for regression
+```{r}
+dat <- dat0 %>%
+  mutate(y = log(activity), x_ura = log(ura_county) - mean(log(ura_county)))
+```
+
+
+# Model fitting using lm and brms
+
+## frequentist/tradtional
+
+simple fit 
+```{r}
+fit_lm <-  lm(y ~ 1, data = dat) 
+summary(fit_lm)
+```
+
+here the same model fitting, just coded up differently in a pipe, with output in nice form
+```{r}
+dat %>%
+  lm(y ~ 1, data = .) %>%
+  broom::tidy(conf.int = TRUE, conf.level = 0.95) %>%
+  select(-statistic, -p.value) #%>%
+#  knitr::kable(format = "latex", digits = 2)
+
+```
+
+
+## Bayesian regression 
+```{r, cache = TRUE}
+fit <- brm(y ~ 1, data = dat,
+        chains = 4, iter = 1000, warmup = 500, cores = getOption("mc.cores", 4))
+```
+
+
+Quick summary overview
+```{r}
+summary(fit) 
+```
+
+You can also pull out whatever you're interested in using the summarise_draws function, e.g.
+```{r}
+draws <- as_draws_array(fit, variable = "Intercept") # this is our mu
+summarise_draws(draws, default_summary_measures())
+```
+
+To get a 95% CI:
+```{r}
+summarise_draws(draws, ~quantile(.x, probs = c(0.025, 0.975)))
+```
+
+These overview plots show, for each parameter, its histogram with posterior samples and its trace plot.
+```{r}
+plot(fit, variable = c("Intercept", "sigma"))
+```
+
+# Plots to show posterior samples
+
+Joint density, using bins
+```{r}
+as_draws_df(fit, pars = c("b_Intercept", "sigma"))%>%
+  ggplot(aes(x = sigma, y = b_Intercept)) +
+  geom_bin2d() +
+  theme_bw()
+
+```
+
+Joint density, estimated
+```{r}
+as_draws_df(fit, pars = c("b_Intercept", "sigma"))%>%
+  ggplot(aes(x = sigma, y = b_Intercept)) +
+  stat_density_2d(aes(fill = ..level..), geom = "polygon", colour="white")+
+  theme_bw()
+
+```
+
+
+marginal densities
+```{r}
+as_draws_df(fit, pars = c("b_Intercept"))%>%
+  ggplot(aes(x = b_Intercept)) +
+  geom_histogram() +
+  theme_bw()
+```
+
+```{r}
+as_draws_df(fit, pars = c("sigma"))%>%
+  ggplot(aes(x = sigma)) +
+  geom_histogram() +
+  theme_bw()
+```
+
+
+
+# MCMC diagnostics 
+Traceplots and posterior densities. Note that you can find the help function with 
+```{r}
+#?plot.brmsfit
+```
+
+```{r}
+plot(fit, variable = c("b_Intercept", "sigma")) 
+```
+
+Check Rhat and effective sample size
+```{r}
+summary(fit) 
+#names(summary(fit))
+summary(fit)$fixed
+summary(fit)$spec_pars
+```
+
+
+
+# MCMC diagnostics in a less ideal setting...
+
+Please note: These fits are based on settings that are NOT recommended. We are just creating an example here of a fit where the MCMC diagnostics (rightly) show that there are issues with the sampling. 
+```{r, cache = TRUE}
+fit_bad <- brm(y ~ 1, data = dat,
+        chains = 4, iter = 400, cores = getOption("mc.cores", 4),
+        control = list(adapt_delta = 0.4, max_treedepth = 4)
+        # these are NOT recommended options, trying to create problems here!
+)
+```
+
+
+```{r}
+plot(fit_bad,  variable = c("b_Intercept",  "sigma")) 
+```
+
+```{r}
+summary(fit_bad)
+```
+
+We see that the effective sample size are too low. Rhat is no longer equal to 1 (although still less than 1.05). 
+
+
+## comparison fit
+
+Here we create a fit with the same number of iterations for comparison 
+```{r, cache = TRUE}
+fit2_short <- brm(y ~ 1, data = dat,
+        chains = 4, iter = 400, cores = getOption("mc.cores", 4))
+```
+
+
+```{r}
+plot(fit2_short,  variable = c("b_Intercept",  "sigma")) 
+```
+
+```{r}
+summary(fit2_short)
+```
+
+
+
